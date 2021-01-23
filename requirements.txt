@@ -3,4 +3,6 @@ numpy
 scikit-image
 tqdm
 pandas
-jupyter
+ipynb-py-convert
+black
+isort
