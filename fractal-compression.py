@@ -83,8 +83,6 @@ class FractalCompressionParams(NamedTuple):
     is_colored: bool
     block_size: int
     uv_block_size: int
-    spatial_scale: float
-    intensity_scale: float
     stride: int
 
 
@@ -196,19 +194,14 @@ $$
 
 а $a$ - intensity scale, $b$ - intensity offset, $R_{ij}$, $D_{ij}$ - ранговые и доменные блоки соответственно.
 
-Найдем частные производные по $a$
-
-$$
-\frac{\partial E}{\partial a} = \sum_{i=1}^n \sum_{j=1}^n 2 (R_{ij} - (a D_{ij} + b)) (-D_{ij}) = 2 \sum_{i=1}^n \sum_{j=1}^n (a D_{ij}^2 + b D_{ij} - R_{ij} D_{ij})\\
-$$
-
-и по $b$
+Найдем частные производные по $b$
 
 $$
 \frac{\partial E}{\partial b} = \sum_{i=1}^n \sum_{j=1}^n 2 (R_{ij} - (a D_{ij} + b)) (-1) = 2 \sum_{i=1}^n \sum_{j=1}^n (a D_{ij} + b - R_{ij})\\
 $$
 
-На практике вычисляемый $a$ не дает больших преимуществ по качеству (+0.3 PSNR), но немного проигрывает по времени и значительно по размеру сжатого изображения. Будем оптимизировать только $b$.
+На практике вычисляемый $a$ не дает больших преимуществ по качеству (+0.3 PSNR), но немного проигрывает по времени и 
+значительно по размеру сжатого изображения. Будем оптимизировать только $b$.
 
 Ищем экстремум, приравнивая функцию к нулю.
 
@@ -317,7 +310,7 @@ def find_block_transform(
 
 # %%
 """
-#### Лучшее -- враг хорошего
+#### Лучшее — враг хорошего
 
 Идея остановки поиска при достижении заданной похожести блоков ускоряет алгоритм на порядок. Но возникает проблема: 
 большая часть блоков берется из левого верхнего угла (смотри визуализацию ниже). Для устранения проблемы можно 
@@ -370,7 +363,7 @@ def find_simple_transforms(image, block_size, stride):
     return transforms
 
 
-simple_transforms = find_simple_transforms(lenna_gray_256x256, block_size=16, stride=4)
+simple_transforms = find_simple_transforms(lenna_gray_256x256, block_size=8, stride=4)
 
 
 # %%
@@ -474,15 +467,21 @@ def show_bad_blocks(image, transforms, block_size):
                 facecolor="r" if transform.bad else "none",
             )
         )
+
+    bad_blocks_rate = sum(transform.bad for _, _, transform in transforms) / (
+        len(xs) * len(ys)
+    )
+    plt.title(f"Доля плохих блоков: {round(bad_blocks_rate, 3)}")
+    plt.savefig("images/bad_blocks.png")
     plt.show()
 
-    print(
-        "Доля плохих блоков:",
-        sum(transform.bad for _, _, transform in transforms) / (len(xs) * len(ys)),
-    )
 
+show_bad_blocks(lenna_gray_256x256, simple_transforms, block_size=8)
 
-show_bad_blocks(lenna_gray_256x256, simple_transforms, block_size=16)
+# %%
+"""
+![Bad blocks](images/bad_blocks.png)
+"""
 
 # %%
 """
@@ -691,9 +690,6 @@ test_transform()
 
 
 # %%
-# GRADED CELL: BitBuffer
-
-
 class BitBuffer:
     """Class that provides storing and and reading integer numbers
     in continuous bytearray.
@@ -869,9 +865,6 @@ test_bit_buffer()
 
 
 # %%
-# GRADED CELL: FractalCompressor
-
-
 class FractalCompressor:
     """Class that performs fractal compression/decompression of images.
 
@@ -930,8 +923,6 @@ class FractalCompressor:
         buffer.push(params.is_colored, 1)
         buffer.push(params.block_size, 8)
         buffer.push(params.uv_block_size, 8)
-        buffer.push(np.rint(params.spatial_scale * 255).astype(np.uint8), 8)
-        buffer.push(np.rint(params.intensity_scale * 255).astype(np.uint8), 8)
         buffer.push(params.stride, 8)
 
     def _read_header(self, buffer):
@@ -958,8 +949,6 @@ class FractalCompressor:
             is_colored=bool(buffer.pop(1)),
             block_size=buffer.pop(8),
             uv_block_size=buffer.pop(8),
-            spatial_scale=buffer.pop(8) / 255,
-            intensity_scale=buffer.pop(8) / 255,
             stride=buffer.pop(8),
         )
 
@@ -1354,8 +1343,6 @@ class FractalCompressor:
         image,
         block_size=8,
         stride=4,
-        spatial_scale=0.5,
-        intensity_scale=0.75,
         block_size_limit=2,
         uv_block_size=16,
         loss_limit=256,
@@ -1372,12 +1359,6 @@ class FractalCompressor:
 
         stride: int, optional (default=1)
             Vertical and horizontal stride for domain block search.
-
-        spatial_scale : float, optional (default=0.5)
-            ({rank block size} / {domain block size}) ratio, must be <1.
-
-        intensity_scale : float, optional (default=0.75)
-            Reduce coefficient for image intensity.
 
         block_size_limit : int, optional (default=8)
             Min block_size to use
@@ -1435,8 +1416,6 @@ class FractalCompressor:
             is_colored=is_colored(image),
             block_size=block_size,
             uv_block_size=uv_block_size,
-            spatial_scale=spatial_scale,
-            intensity_scale=intensity_scale,
             stride=stride,
         )
 
@@ -1650,10 +1629,16 @@ def show_decompress(orig, result, n_iterations=(1, 2, 4, 8, 16, 25)):
     axs[-1].imshow(orig, cmap="gray")
     axs[-1].set_title("orig")
 
+    plt.savefig("images/decompress.jpg")
     plt.show()
 
 
 show_decompress(lenna_gray_256x256, result_gray)
+
+#%%
+"""
+![Decompress](images/decompress.jpg)
+"""
 
 # %%
 """
@@ -1675,6 +1660,7 @@ def plot_yuv(image):
     for idx, component in enumerate(components):
         axs[idx].imshow(component, cmap="gray")
 
+    plt.savefig("images/yuv_components.jpg")
     plt.show()
 
 
@@ -1772,7 +1758,11 @@ def my_rgb2yuv(image):
 
     rgb = yuv2rgb(np.dstack((y, u, v)))
 
-    print("Минимум и максимум в rgb изображении:", rgb.min(), rgb.max())
+    print(
+        "Минимум и максимум в rgb изображении:",
+        round(rgb.min(), 3),
+        round(rgb.max(), 3),
+    )
     print(
         "На некоторых изображениях получаем выходящие за пределы яркости. Лучше всего их обрезать."
     )
@@ -1781,7 +1771,7 @@ def my_rgb2yuv(image):
     rgb = np.rint(rgb * 255).astype(np.uint8)
     plt.imshow(rgb)
 
-    print("PSNR:", weighted_psnr(rgb, lenna_rgb_256x256))
+    print("PSNR:", round(weighted_psnr(rgb, lenna_rgb_256x256), 3))
 
 
 my_rgb2yuv(lenna_rgb_256x256)
@@ -1847,10 +1837,16 @@ def only_y_transform(image):
     axs[3].imshow(rgb, cmap="gray")
     axs[3].set_title(f"result, psnr: {round(weighted_psnr(rgb, image), 2)}")
 
+    plt.savefig("images/only_y.jpg")
     plt.show()
 
 
 only_y_transform(lenna_rgb_256x256)
+
+# %%
+"""
+![Save only Y component](images/only_y.jpg)
+"""
 
 # %%
 """
@@ -1899,17 +1895,23 @@ def resize_uv_transform(image, mn=8):
     axs[1].imshow(rgb)
     axs[1].set_title(f"result, psnr: {round(weighted_psnr(rgb, image), 2)}")
 
+    plt.savefig("images/resize_uv.jpg")
     plt.show()
 
 
 resize_uv_transform(lenna_rgb_256x256)
+
+# %%
+"""
+![Resize U and V components](images/resize_uv.jpg)
+"""
 
 
 # %%
 def optimal_mn(image, mns=(2, 4, 8, 16, 32, 64, 128, 256)):
     psnrs = []
 
-    for mn in mns:
+    for mn in tqdm(mns):
         y, u, v = np.split(rgb2yuv(image), [1, 2], axis=2)
         u = resize(u, (u.shape[0] // mn, u.shape[1] // mn))
         v = resize(v, (v.shape[0] // mn, v.shape[1] // mn))
@@ -1934,9 +1936,16 @@ def optimal_mn(image, mns=(2, 4, 8, 16, 32, 64, 128, 256)):
         psnrs.append(weighted_psnr(rgb, image))
 
     plt.plot(mns, psnrs)
+    plt.savefig("images/optimal_mn.jpg")
+    plt.show()
 
 
 optimal_mn(lenna_rgb_256x256)
+
+# %%
+"""
+![Optimal resize multiplier](images/optimal_mn.jpg)
+"""
 
 # %%
 """
@@ -1960,14 +1969,21 @@ def show_colored_decompress(orig, result):
     img = comp.decompress(result, 25)
     _, axs = plt.subplots(ncols=2)
     axs[0].imshow(img)
-    axs[0].set_title(f"its: 25, psnr: {round(weighted_psnr(orig, img), 2)}")
+    axs[0].set_title(f"its: 25, psnr: {round(weighted_psnr(orig, img), 3)}")
     axs[1].imshow(orig, cmap="gray")
     axs[1].set_title("orig")
 
+    plt.savefig("images/colored_decompress.jpg")
     plt.show()
 
 
 show_colored_decompress(lenna_rgb_256x256, result_rgb)
+
+# %%
+"""
+![Colored decompress](images/colored_decompress.jpg)
+"""
+
 
 # %%
 """
@@ -1986,10 +2002,10 @@ def find_loss_limit(image, loss_limits=(16, 32, 64, 128, 256)):
         start = time.time()
         result = comp.compress(
             image,
-            block_size=8,
-            stride=4,
-            block_size_limit=4,
-            uv_block_size=16,
+            block_size=16,
+            stride=8,
+            block_size_limit=8,
+            uv_block_size=32,
             loss_limit=loss_limit,
         )
         result = comp.decompress(result, 25)
@@ -2009,14 +2025,22 @@ def find_loss_limit(image, loss_limits=(16, 32, 64, 128, 256)):
 
     plt.plot(df["loss_limit"], df["psnr"], label="psnr")
     plt.legend()
+    plt.savefig("images/psnr_from_loss_limit.jpg")
     plt.show()
 
     plt.plot(df["loss_limit"], df["time"], label="time")
     plt.legend()
+    plt.savefig("images/time_from_loss_limit.jpg")
     plt.show()
 
 
 find_loss_limit(lenna_rgb_256x256)
+
+# %%
+"""
+![PSNR from loss limit](images/psnr_from_loss_limit.jpg)
+![time from loss limit](images/time_from_loss_limit.jpg)
+"""
 
 # %%
 """
@@ -2056,21 +2080,23 @@ def plot_results(results):
     ax.set_xlabel("Compression Rate", fontsize=16)
     ax.set_ylabel("PSNR, dB", fontsize=16)
 
+    plt.savefig("images/psnr_rate.jpg")
     plt.show()
 
 
 # %%
 def plot_images(results, quality=(0, 20, 40, 60, 80, 100)):
-    _, axs = plt.subplots(ncols=len(quality))
+    _, axs = plt.subplots(ncols=len(quality), figsize=(18, 5))
 
     compression_rates, psnrs, decompressed_images = results
     for i, image in enumerate(decompressed_images):
         axs[i].imshow(image)
-        orig_size = 256 * 256 * 3
+        orig_size = 256 * 256 * 3  # TODO: Add support for other sizes
         axs[i].set_title(
-            f"psnr: {round(psnrs[i], 2)}, size: {compression_rates[i] * orig_size}"
+            f"psnr: {round(psnrs[i], 3)}, size: {int(compression_rates[i] * orig_size)}b"
         )
 
+    plt.savefig("images/qualities.jpg")
     plt.show()
 
 
@@ -2082,6 +2108,13 @@ plot_results(lenna_results)
 
 # %%
 plot_images(lenna_results)
+
+# %%
+"""
+![PSNR from compression rate](images/psnr_rate.jpg)
+![Qualities](images/qualities.jpg)
+"""
+
 
 # %%
 """
