@@ -3,6 +3,7 @@ numpy
 scikit-image
 tqdm
 pandas
+celluloid
 ipynb-py-convert
 black
 isort

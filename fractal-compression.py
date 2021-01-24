@@ -36,6 +36,7 @@ import matplotlib.animation
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from celluloid import Camera
 from matplotlib.patches import Rectangle
 from skimage import io
 from skimage.color import rgb2gray, rgb2ycbcr, rgb2yuv, ycbcr2rgb, yuv2rgb
@@ -476,7 +477,61 @@ def show_bad_blocks(image, transforms, block_size):
     plt.show()
 
 
-show_bad_blocks(lenna_gray_256x256, simple_transforms, block_size=8)
+show_bad_blocks(lenna_gray_256x256, simple_transforms, block_size=16)
+
+# %%
+
+
+def animate_perform(transforms, block_size, num_iterations=4):
+    image = np.zeros((256, 256), dtype=np.double)
+
+    transformed_image = np.zeros_like(image)
+
+    fig = plt.figure()
+    camera = Camera(fig)
+
+    for _ in tqdm(range(num_iterations)):
+        # Instead of reducing each domain block we will reduce the entire image
+        resized_image = resize(image, (image.shape[0] // 2, image.shape[1] // 2))
+
+        i = 0
+        for x, y, transform in transforms:
+            domain_block = resized_image[
+                transform.x : transform.x + block_size,
+                transform.y : transform.y + block_size,
+            ]
+
+            if transform.flip:
+                domain_block = np.flip(domain_block, axis=1)
+
+            domain_block = np.rot90(domain_block, k=transform.rotates)
+
+            intensity_scale = 0.75
+
+            transformed_image[x : x + block_size, y : y + block_size] = (
+                intensity_scale * domain_block + transform.intensity_offset
+            )
+
+            blocks_in_line = image.shape[1] // block_size
+
+            i += 1
+            if i % blocks_in_line == 0:  # Show line transforms to increase performance
+                plt.imshow(transformed_image, cmap="gray")
+                camera.snap()
+
+        image = transformed_image
+
+    print("Saving animation to file...")
+    animation = camera.animate()
+    animation.save("images/performing_decompress.mp4")
+
+
+animate_perform(simple_transforms, block_size=8)
+
+# %%
+"""
+![Decompression](images/performing_decompress.gif)
+"""
 
 # %%
 """
