@@ -45,6 +45,8 @@ from skimage.metrics import peak_signal_noise_ratio as psnr
 from skimage.transform import resize
 from tqdm import tqdm
 
+plt.rcParams["savefig.bbox"] = "tight"
+
 # %%
 """
 Первым делом нужно загрузить картинку
@@ -371,7 +373,7 @@ simple_transforms = find_simple_transforms(lenna_gray_256x256, block_size=8, str
 def save_transforms(image, transforms, block_size):
     """Save each transform on image as mp4 video.
 
-    Rank block is red, domain block is green. If transform is bad then blocks have face color.
+    Rank block is red, domain block is green.
 
     Parameters
     ----------
@@ -386,36 +388,60 @@ def save_transforms(image, transforms, block_size):
 
     """
 
-    def animate(index):
-        x, y, transform = transforms[index]
-        plt.clf()
-        plt.imshow(image, cmap="gray")
-        plt.gca().add_patch(
+    fig, axs = plt.subplots(ncols=4)
+    camera = Camera(fig)
+
+    blocks_in_line = image.shape[1] // block_size
+
+    for x, y, transform in transforms[
+        len(transforms) // 4 : len(transforms) // 4 + blocks_in_line
+    ]:
+        axs[0].imshow(image, cmap="gray")
+        axs[0].add_patch(
             Rectangle(
-                (x, y),
+                (y, x),
                 block_size,
                 block_size,
                 linewidth=1,
+                facecolor="none",
                 edgecolor="r",
-                facecolor="r" if transform.bad else "none",
             )
         )
-        plt.gca().add_patch(
+        axs[0].add_patch(
             Rectangle(
-                (transform.x, transform.y),
+                (transform.y, transform.x),
                 block_size * 2,
                 block_size * 2,
                 linewidth=2,
                 edgecolor="g",
-                facecolor="g" if transform.bad else "none",
+                facecolor="none",
             )
         )
 
-    ani = matplotlib.animation.FuncAnimation(
-        plt.figure(), animate, frames=len(transforms)
-    )
+        range_block = image[x : x + block_size, y : y + block_size]
+        axs[1].imshow(range_block, cmap="gray")
+        axs[1].set_title("Ранговый")
 
-    ani.save("images/simple_transforms.mp4")
+        domain_block = image[
+            transform.x : transform.x + block_size * 2,
+            transform.y : transform.y + block_size * 2,
+        ]
+        axs[2].imshow(domain_block, cmap="gray")
+        axs[2].set_title("Доменный")
+
+        if transform.flip:
+            domain_block = np.flip(domain_block, axis=1)
+        domain_block = np.rot90(domain_block, k=transform.rotates)
+        intensity_scale = 0.75
+        domain_block = intensity_scale * domain_block + transform.intensity_offset
+        axs[3].imshow(domain_block, cmap="gray")
+        axs[3].set_title("Трансформ.")
+
+        camera.snap()
+
+    print("Saving animation to file...")
+    animation = camera.animate()
+    animation.save("images/simple_transforms.mp4")
 
 
 save_transforms(lenna_gray_256x256, simple_transforms, block_size=16)
@@ -460,7 +486,7 @@ def show_bad_blocks(image, transforms, block_size):
     ) in transforms:
         plt.gca().add_patch(
             Rectangle(
-                (x, y),
+                (y, x),
                 block_size,
                 block_size,
                 linewidth=1,
@@ -477,12 +503,12 @@ def show_bad_blocks(image, transforms, block_size):
     plt.show()
 
 
-show_bad_blocks(lenna_gray_256x256, simple_transforms, block_size=16)
+show_bad_blocks(lenna_gray_256x256, simple_transforms, block_size=8)
 
 # %%
 
 
-def animate_perform(transforms, block_size, num_iterations=4):
+def animate_perform(transforms, block_size, num_iterations=3):
     image = np.zeros((256, 256), dtype=np.double)
 
     transformed_image = np.zeros_like(image)
@@ -1674,7 +1700,7 @@ def show_decompress(orig, result, n_iterations=(1, 2, 4, 8, 16, 25)):
     for n in tqdm(n_iterations):
         images.append(comp.decompress(result, n))
 
-    _, axs = plt.subplots(ncols=len(images) + 1)
+    _, axs = plt.subplots(ncols=len(images) + 1, figsize=(18, 6))
     for index in range(len(images)):
         axs[index].imshow(images[index], cmap="gray")
         axs[index].set_title(
@@ -1854,7 +1880,7 @@ print(
 
 # %%
 def only_y_transform(image):
-    _, axs = plt.subplots(ncols=4)
+    _, axs = plt.subplots(ncols=4, figsize=(12, 6))
 
     y, u, v = np.split(rgb2yuv(image), [1, 2], axis=2)
 
