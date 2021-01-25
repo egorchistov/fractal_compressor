@@ -422,7 +422,7 @@ save_transforms(lenna_gray_256x256, simple_transforms, block_size=16)
 
 # %%
 """
-[![Simple transforms](images/simple_transforms.gif)](images/simple_transforms.mp4)
+![Simple transforms](images/simple_transforms.gif)
 """
 
 # %%
